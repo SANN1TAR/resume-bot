@@ -3,6 +3,8 @@
 # Выход: путь к готовому PDF файлу
 
 import uuid
+import tempfile
+import os
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -13,17 +15,25 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 
 def register_fonts():
-    try:
-        pdfmetrics.registerFont(TTFont("DejaVu", "DejaVuSans.ttf"))
-        pdfmetrics.registerFont(TTFont("DejaVu-Bold", "DejaVuSans-Bold.ttf"))
-        return "DejaVu", "DejaVu-Bold"
-    except Exception:
-        return "Helvetica", "Helvetica-Bold"
+    search_paths = [
+        ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf", "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf"),
+    ]
+    for regular, bold in search_paths:
+        try:
+            pdfmetrics.registerFont(TTFont("DejaVu", regular))
+            pdfmetrics.registerFont(TTFont("DejaVu-Bold", bold))
+            return "DejaVu", "DejaVu-Bold"
+        except Exception:
+            continue
+    return "Helvetica", "Helvetica-Bold"
 
 
 def generate_pdf(data: dict) -> str:
     font, font_bold = register_fonts()
-    filename = f"/tmp/resume_{uuid.uuid4().hex}.pdf"
+    filename = os.path.join(tempfile.gettempdir(), f"resume_{uuid.uuid4().hex}.pdf")
 
     doc = SimpleDocTemplate(
         filename,

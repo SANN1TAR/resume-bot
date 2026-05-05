@@ -3,9 +3,11 @@
 # Выход: готовый PDF файл с резюме
 
 import os
+import asyncio
 import logging
 from dotenv import load_dotenv
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardRemove
+from telegram.error import TimedOut, NetworkError
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     filters, ContextTypes, ConversationHandler
@@ -42,6 +44,17 @@ STEP_KEYS = [
 ]
 
 
+async def safe_send(func, *args, retries=5, **kwargs):
+    for attempt in range(retries):
+        try:
+            return await func(*args, **kwargs)
+        except (TimedOut, NetworkError):
+            if attempt < retries - 1:
+                await asyncio.sleep(2)
+            else:
+                raise
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text(
@@ -62,14 +75,15 @@ async def handle_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if next_step < len(QUESTIONS):
         context.user_data["step"] = next_step
-        await update.message.reply_text(QUESTIONS[next_step])
+        await safe_send(update.message.reply_text, QUESTIONS[next_step])
         return next_step
     else:
-        await update.message.reply_text("Секунду, генерирую PDF...")
+        await safe_send(update.message.reply_text, "Секунду, генерирую PDF...")
         data = {k: context.user_data.get(k, "") for k in STEP_KEYS}
         pdf_path = generate_pdf(data)
         with open(pdf_path, "rb") as f:
-            await update.message.reply_document(
+            await safe_send(
+                update.message.reply_document,
                 document=f,
                 filename="resume.pdf",
                 caption="Готово! Твоё резюме. Удачи на собесе."
@@ -89,7 +103,14 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .write_timeout(30)
+        .build()
+    )
 
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
